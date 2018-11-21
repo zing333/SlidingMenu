@@ -184,3 +184,4 @@ License
 [18]: https://play.google.com/store/apps/details?id=com.evernote.food
 [19]: https://play.google.com/store/apps/details?id=com.linkedin.android
 [20]: https://play.google.com/store/apps/details?id=com.zappos.android
+[21]: https://www.cnblogs.com/samchen2009/p/3294713.html

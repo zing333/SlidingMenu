@@ -223,3 +223,251 @@ License
         <DT><A HREF="https://www.jianshu.com/p/845190676431" ADD_DATE="1542785224" ICON="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAACz0lEQVQ4jV2ST2hcZRTFf+f7vvfezOuk0cTWaYtVUEGyEhV0oaBQ0uJCpV1lUwuCBSMoLQiiIoJ/KNiCi1hdxC4UBP/gUtCNiOBG3XRRin9qaJPUUs1Mp0ln3nvfd11MI8WzvNx77uGco5VDe/bnLj9Rp3RbAoiNzHlJYhOWEmDIeQPMSWTS+SpVR4JZWADrRkjCpHZH1COsqsbX3qMsB+ewaxsSRjQsK/LbjbDgJLpDw9Kg7/KZ+7Tj5JcW7rgbTWwldHdhdc3Ui28wffQtlOfmpm+V39Z1w2Qm6Gr50L5ksZGfmLTpl9/FYiM/vZ1meYnqz1+xqwO27N1Pfe4s2Z330Px2xuqV81z5/CNZXZsjRchypl46RnNpVZdeOUz1x1mGp39i8NUntB+ZZe3k2/x9/DVsY52r33+j3uJxLCXkHbpwcNbULnFlh9a9D9J+6FHWv/uaiX0HMAlCIP1zGdcuIcuRHP1PP2D4y4+4dkmQc9jGOnE0pL5wjrL1OMpy+p8t4soOFhsUAmk0RHJMvfA6bnIKixGTCCaRRtfo7HmSyYPPs/rcASbnDtOZfYo46CM53JYO1e9n6J16b5yOJSSQGUESMgMYxxUjYftOLEXW3n8HUsPN86+S3TWDihZyjv8qIhEwAwkzGxfGedJwg/yWGW565ghgZDt30/y1AhJcf7aJMB6CpOsLCdcqaZaX6H14DARTR99EeQEpYjdymBEwM4QAI0YhEQd9wq7dbJ17FuUFKtr0P14gXemPlbtgmAnJwpjIkA+4PEd5QW/xBK7dRnkLgDTo4bftoPPEHC5kpMEaOD9WIJCct2btstZ/+BaqkVHXSk0FqTf2p6kpH7uf8oGHrf/FKQ1P/ywVLZOZtPz03tUi+O6wiYm6ElkmyfF/WNOAgKoyipa1suBGTbropDiPseQlVLRMyOxGpzcjDgE5byo75r0HY0lq5v8FS/1LVvsjW/AAAAAASUVORK5CYII=">Android O Car Launcher解析 - 简书</A>
     </DL><p>
 </DL><p>
+		
+============================================================================
+1.frameworks/base/core/java/com/android/internal/os/ZygoteInit.java
+
+public static void main(String argv[]) {
+        ……此处省略一万字，下同
+//启动system_server进程
+        if (startSystemServer) {
+            startSystemServer(abiList, socketName);
+        }
+        ……此处省略一万字，下同
+}
+private static boolean startSystemServer(String abiList, String socketName)
+        throws MethodAndArgsCaller, RuntimeException {
+        ……    
+        pid = Zygote.forkSystemServer(
+                parsedArgs.uid, parsedArgs.gid,
+                parsedArgs.gids,
+                parsedArgs.debugFlags,
+                null,
+                parsedArgs.permittedCapabilities,
+                parsedArgs.effectiveCapabilities);
+……
+}
+
+
+
+2.frameworks/base/core/java/com/android/internal/os/Zygote.java
+public static int forkSystemServer(int uid, int gid, int[] gids, int debugFlags,
+        int[][] rlimits, long permittedCapabilities, long effectiveCapabilities) {
+    VM_HOOKS.preFork();
+//通过JNI正式fork出system_server进程，并返回system_server的进程ID
+    int pid = nativeForkSystemServer(
+            uid, gid, gids, debugFlags, rlimits, permittedCapabilities, effectiveCapabilities);
+        ……
+}
+
+3. frameworks/base/services/java/com/android/server/SystemServer.java
+public static void main(String[] args) {
+    new SystemServer().run();
+}
+private void run() {
+……
+    //Create the system service manager.
+mSystemServiceManager = new SystemServiceManager(mSystemContext);
+
+startBootstrapServices();
+startCoreServices();
+startOtherServices();
+……
+}
+
+private void startBootstrapServices() {
+    ……
+    // Activity manager runs the show.
+    mActivityManagerService = mSystemServiceManager.startService(
+            ActivityManagerService.Lifecycle.class).getService();
+    ……
+}
+private void startOtherServices() {
+……
+statusBar = new StatusBarManagerService(context, wm);
+    ServiceManager.addService(Context.STATUS_BAR_SERVICE, statusBar);
+……
+startSystemUi(context);
+……
+}
+static final void startSystemUi(Context context) {
+    Intent intent = new Intent();
+    intent.setComponent(new ComponentName("com.android.systemui",
+                "com.android.systemui.SystemUIService"));
+    intent.addFlags(Intent.FLAG_DEBUG_TRIAGED_MISSING);
+    //Slog.d(TAG, "Starting service: " + intent);
+    context.startServiceAsUser(intent, UserHandle.SYSTEM);
+}
+
+4.frameworks/base/packages/SystemUI/src/com/android/systemui/SystemUIService.java
+public void onCreate() {
+    super.onCreate();
+    ((SystemUIApplication) getApplication()).startServicesIfNeeded();
+}
+5. frameworks/base/packages/SystemUI/src/com/android/systemui/SystemUIApplication.java
+private final Class<?>[] SERVICES = new Class[] {
+        com.android.systemui.tuner.TunerService.class,
+        com.android.systemui.keyguard.KeyguardViewMediator.class,
+        com.android.systemui.recents.Recents.class,
+        com.android.systemui.volume.VolumeUI.class,
+        Divider.class,
+        com.android.systemui.statusbar.SystemBars.class,
+        com.android.systemui.usb.StorageNotification.class,
+        com.android.systemui.power.PowerUI.class,
+        com.android.systemui.media.RingtonePlayer.class,
+        com.android.systemui.keyboard.KeyboardUI.class,
+        com.android.systemui.tv.pip.PipUI.class,
+        com.android.systemui.shortcut.ShortcutKeyDispatcher.class,
+        com.android.systemui.VendorServices.class
+};
+public void startServicesIfNeeded() {
+    startServicesIfNeeded(SERVICES);
+}
+private void startServicesIfNeeded(Class<?>[] services) {
+    ……
+//创建相关Service实例，比如SystemBars(PhoneStatusBar)（最近任务栏）
+//frameworks/base/packages/SystemUI/src/com/android/
+//systemui/statusbar/SystemBars.java(PhoneStatusBar.java)
+Object newService = SystemUIFactory.getInstance().createInstance(cl);
+    mServices[i] = (SystemUI) ((newService == null) ? cl.newInstance() : newService);
+    ……
+mServices[i].start();
+……
+    if (mBootCompleted) {
+        mServices[i].onBootCompleted();
+    }
+}
+frameworks/base/packages/SystemUI/src/com/android/systemui/statusbar/SystemBars.java
+public void start() {
+    ……
+    mServiceMonitor = new ServiceMonitor(TAG, DEBUG,
+            mContext, Settings.Secure.BAR_SERVICE_COMPONENT, this);
+    mServiceMonitor.start();  // will call onNoService if no remote service is found
+}
+
+@Override
+public void onNoService() {
+    ……
+    createStatusBarFromConfig();  // fallback to using an in-process implementation
+}
+private void createStatusBarFromConfig() {
+    ……
+//frameworks/base/packages/SystemUI/res/values/config.xml
+    final String clsName = mContext.getString(R.string.config_statusBarComponent);
+    ……
+cls = mContext.getClassLoader().loadClass(clsName);
+    ……
+mStatusBar = (BaseStatusBar) cls.newInstance();
+    ……
+    mStatusBar.start();
+    ……
+}
+
+
+frameworks/base/packages/SystemUI/res/values/config.xml
+<!-- Component to be used as the status bar service.  Must implement the IStatusBar
+ interface.  This name is in the ComponentName flattened format (package/class)  -->
+<string name="config_statusBarComponent"       
+translatable="false">com.android.systemui.statusbar.phone.StatusBar</string>
+frameworks/base/packages/SystemUI/src/com/android/systemui/statusbar/phone/PhoneStatusBar.java
+@Override
+public void start() {
+    ……
+    super.start();
+    ……
+}
+private void addStatusBarWindow() {
+    ……
+makeStatusBarView();
+    mStatusBarWindowManager = new StatusBarWindowManager(mContext);
+……
+}
+protected PhoneStatusBarView makeStatusBarView() {
+    ……
+    inflateStatusBarWindow(context);
+……
+mNotificationPanel = (NotificationPanelView) mStatusBarWindow.findViewById(
+        R.id.notification_panel);
+    mNotificationPanel.setStatusBar(this);
+……
+}
+protected void inflateStatusBarWindow(Context context) {
+    mStatusBarWindow = (StatusBarWindowView) View.inflate(context,
+            R.layout.super_status_bar, null);
+}
+
+frameworks/base/packages/SystemUI/src/com/android/systemui/statusbar/BaseStatusBar.java
+public void start() {
+    ……
+createAndAddWindows();
+……
+}
+frameworks/base/packages/SystemUI/res/layout/super_status_bar.xml
+<com.android.systemui.statusbar.phone.StatusBarWindowView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:sysui="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fitsSystemWindows="true">
+
+    <com.android.systemui.statusbar.BackDropView
+            android:id="@+id/backdrop"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone"
+            sysui:ignoreRightInset="true"
+            >
+        <ImageView android:id="@+id/backdrop_back"
+                   android:layout_width="match_parent"
+                   android:scaleType="centerCrop"
+                   android:layout_height="match_parent" />
+        <ImageView android:id="@+id/backdrop_front"
+                   android:layout_width="match_parent"
+                   android:layout_height="match_parent"
+                   android:scaleType="centerCrop"
+                   android:visibility="invisible" />
+    </com.android.systemui.statusbar.BackDropView>
+
+    <com.android.systemui.statusbar.ScrimView android:id="@+id/scrim_behind"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:importantForAccessibility="no"
+        sysui:ignoreRightInset="true"
+        />
+
+    <com.android.systemui.statusbar.AlphaOptimizedView
+        android:id="@+id/heads_up_scrim"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/heads_up_scrim_height"
+        android:background="@drawable/heads_up_scrim"
+        sysui:ignoreRightInset="true"
+        android:importantForAccessibility="no"/>
+
+    <include layout="@layout/status_bar"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/status_bar_height" />
+
+    <include layout="@layout/brightness_mirror" />
+
+    <ViewStub android:id="@+id/fullscreen_user_switcher_stub"
+              android:layout="@layout/car_fullscreen_user_switcher"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent"/>
+
+    <include layout="@layout/status_bar_expanded"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
+    <com.android.systemui.statusbar.ScrimView android:id="@+id/scrim_in_front"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:importantForAccessibility="no"
+        sysui:ignoreRightInset="true"
+        />
+
+</com.android.systemui.statusbar.phone.StatusBarWindowView>
+
+ 
+
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
